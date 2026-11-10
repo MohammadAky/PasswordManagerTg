@@ -130,6 +130,10 @@ function setWebhook() {
   Logger.log(url + '\n' + JSON.stringify(r));
 }
 
+function webhookInfo() {
+  Logger.log(JSON.stringify(tg_('getWebhookInfo'), null, 2));
+}
+
 /* ============ WEBHOOK ============ */
 function doGet() { return ContentService.createTextOutput('Bot is running'); }
 
@@ -138,16 +142,21 @@ function doPost(e) {
   try { up = JSON.parse(e.postData.contents); } catch (err) { return ok_(); }
   const cache = CacheService.getScriptCache();
   const key = 'u' + up.update_id;
-  if (cache.get(key)) return ok_();
-  cache.put(key, '1', 21600);
-
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(25000);
-    if (up.message) onMessage_(up.message);
-    else if (up.callback_query) onCallback_(up.callback_query);
+    if (cache.get(key)) return ok_();             // آپدیت تکراری (retry تلگرام)
+    try {
+      if (up.message) onMessage_(up.message);
+      else if (up.callback_query) onCallback_(up.callback_query);
+    } catch (err) {
+      const msg = err && err.stack ? err.stack : String(err);
+      console.error(msg);
+      try { sheet_('Logs', ['time', 'error']).appendRow([new Date().toISOString(), msg]); } catch (x) {}
+    }
+    cache.put(key, '1', 21600);
   } catch (err) {
-    console.error(err && err.stack ? err.stack : err);
+    console.error(err);
   } finally {
     try { lock.releaseLock(); } catch (x) {}
   }
